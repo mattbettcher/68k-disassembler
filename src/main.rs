@@ -9,6 +9,72 @@ use regex::Regex;
 use std::collections::HashMap;
 use std::str::FromStr;
 
+// S-Record reader
+use std::io;
+use std::io::prelude::*;
+use std::fs::File;
+
+pub fn read_srec(name: &'static str) {
+    
+    let mut f = File::open(name).unwrap();
+    let mut buffer = Vec::new();
+    let mut mem = Vec::with_capacity(0x10000);
+
+    unsafe { mem.set_len(0x10000); }
+
+    f.read_to_end(&mut buffer).unwrap();
+
+    let mut i = 0;
+
+    loop {
+        i = read_rec(&mut buffer, i, &mut mem);
+
+        if i >= buffer.len() { break; }
+    }
+}
+
+fn read_rec(b: &mut Vec<u8>, start: usize, mem: &mut Vec<u8>) -> usize {
+
+    let mut i = start;
+
+    println!("{}", format!("{}{}", b[i] as char, b[i + 1] as char).as_str());
+
+    match format!("{}{}", b[i] as char, b[i + 1] as char).as_str() {
+        "S0" => {
+            // skip this record for now
+            let count: u16 = u16::from_str_radix(format!("{}{}", b[i + 2] as char, b[i + 3] as char).as_str(), 16).unwrap();
+            i += (count * 2 + 6) as usize;
+        },
+        "S1" => {
+            let count: u16 = u16::from_str_radix(format!("{}{}", b[i + 2] as char, b[i + 3] as char).as_str(), 16).unwrap();
+            let mut address: u16 = u16::from_str_radix(format!("{}{}{}{}", b[i + 4] as char, b[i + 5] as char, b[i + 6] as char, b[i + 7] as char).as_str(), 16).unwrap();
+            // load data into mem at correct index
+            let mut x = i + 6;
+
+            loop {
+                let d = u8::from_str_radix(format!("{}{}", b[x] as char, b[x + 1] as char).as_str(), 16).unwrap();
+                println!("0x{:x} {:x}", address, d);
+                mem[address as usize] = d;
+                address += 1;
+                x += 2;
+
+                if x >= i + (count * 2 + 4) as usize { break; }
+            }
+            
+            i += (count * 2 + 6) as usize;
+            println!("Load to: \t0x{:x}", address);
+        },
+        "S8" => {
+            let count: u16 = u16::from_str_radix(format!("{}{}", b[i + 2] as char, b[i + 3] as char).as_str(), 16).unwrap();
+            let address: u16 = u16::from_str_radix(format!("{}{}{}{}{}{}", b[i + 4] as char, b[i + 5] as char, b[i + 6] as char, b[i + 7] as char, b[i + 8] as char, b[i + 9] as char).as_str(), 16).unwrap();
+            i += (count * 2 + 2) as usize;
+            println!("Execute at:\t0x{:x}", address);
+        },
+        _ => unimplemented!(),
+    }
+    i
+}
+
 /// ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 #[derive(Debug)]
 enum SP {
